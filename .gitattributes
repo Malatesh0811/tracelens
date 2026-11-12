@@ -1,0 +1,4 @@
+# Shell script must keep Unix line endings (runs on Linux CI)
+mvnw text eol=lf
+# Windows script keeps Windows line endings
+*.cmd text eol=crlf
