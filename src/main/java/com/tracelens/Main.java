@@ -1,7 +1,10 @@
 package com.tracelens;
 
+import com.tracelens.analysis.ErrorGroup;
+import com.tracelens.analysis.ErrorGrouper;
 import com.tracelens.parser.ErrorReport;
 import com.tracelens.parser.LogParser;
+import com.tracelens.rules.Rulebook;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -19,7 +22,7 @@ import java.util.List;
  */
 public class Main {
 
-    public static final String VERSION = "0.1.0";
+    public static final String VERSION = "0.2.0";
 
     public static void main(String[] args) {
         int exitCode = run(args, System.in, System.out, System.err);
@@ -86,8 +89,10 @@ public class Main {
 
         List<String> lines = text.lines().toList();
         List<ErrorReport> reports = new LogParser().parse(lines);
+        List<ErrorGroup> groups = new ErrorGrouper().group(reports, basePackage);
         String source = file.equals("-") ? "piped input" : file;
-        out.print(new ReportFormatter().format(source, lines.size(), reports, basePackage));
+        ReportFormatter formatter = new ReportFormatter(Rulebook.defaultRules());
+        out.print(formatter.format(source, lines.size(), groups, basePackage));
         return 0;
     }
 

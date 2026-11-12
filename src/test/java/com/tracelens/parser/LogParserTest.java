@@ -130,6 +130,31 @@ class LogParserTest {
     }
 
     @Test
+    void errorGetsTheTimeOfTheLogLineBeforeIt() {
+        List<ErrorReport> reports = parse("""
+                2026-11-12 10:02:11 ERROR [main] Application failed
+                java.lang.NullPointerException
+                \tat com.shop.UserService.find(UserService.java:42)
+                10:15:40 ERROR again
+                java.lang.NullPointerException
+                \tat com.shop.UserService.find(UserService.java:42)
+                """);
+
+        assertEquals("2026-11-12 10:02:11", reports.get(0).timestamp());
+        assertEquals("10:15:40", reports.get(1).timestamp());
+    }
+
+    @Test
+    void errorWithoutTimestampHasNullTime() {
+        ErrorReport report = parse("""
+                java.lang.NullPointerException
+                \tat com.shop.UserService.find(UserService.java:42)
+                """).get(0);
+
+        assertNull(report.timestamp());
+    }
+
+    @Test
     void emptyLogHasNoErrors() {
         assertTrue(parse("").isEmpty());
     }

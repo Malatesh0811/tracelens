@@ -1,0 +1,39 @@
+2026-11-12 09:00:01 INFO  [main] com.shop.ShopApplication - Starting ShopApplication v1.0
+2026-11-12 09:00:02 ERROR [main] org.apache.catalina.core.StandardService - Failed to start connector
+java.net.BindException: Address already in use: bind
+	at java.base/sun.nio.ch.Net.bind0(Native Method)
+	at java.base/sun.nio.ch.Net.bind(Net.java:565)
+	at org.apache.tomcat.util.net.NioEndpoint.initServerSocket(NioEndpoint.java:278)
+	at com.shop.ShopApplication.main(ShopApplication.java:12)
+2026-11-12 09:05:13 INFO  [http-8081-1] com.shop.cart.CartController - POST /cart/items
+2026-11-12 09:05:13 ERROR [http-8081-1] com.shop.cart.CartController - Could not add item
+java.lang.NumberFormatException: For input string: "2a"
+	at java.base/java.lang.NumberFormatException.forInputString(NumberFormatException.java:67)
+	at java.base/java.lang.Integer.parseInt(Integer.java:662)
+	at com.shop.cart.CartService.parseQuantity(CartService.java:58)
+	at com.shop.cart.CartController.addItem(CartController.java:33)
+2026-11-12 09:07:40 INFO  [http-8081-2] com.shop.user.UserController - GET /profile/105
+2026-11-12 09:07:40 ERROR [http-8081-2] com.shop.user.UserController - Request failed
+java.lang.NullPointerException: Cannot invoke "com.shop.model.User.getEmail()" because "user" is null
+	at com.shop.user.UserService.getUserEmail(UserService.java:42)
+	at com.shop.user.UserController.showProfile(UserController.java:19)
+2026-11-12 09:12:02 INFO  [http-8081-3] com.shop.cart.CartController - POST /cart/items
+2026-11-12 09:12:02 ERROR [http-8081-3] com.shop.cart.CartController - Could not add item
+java.lang.NumberFormatException: For input string: "abc"
+	at java.base/java.lang.NumberFormatException.forInputString(NumberFormatException.java:67)
+	at java.base/java.lang.Integer.parseInt(Integer.java:662)
+	at com.shop.cart.CartService.parseQuantity(CartService.java:58)
+	at com.shop.cart.CartController.addItem(CartController.java:33)
+2026-11-12 09:20:55 INFO  [http-8081-4] com.shop.user.UserController - GET /profile/221
+2026-11-12 09:20:55 ERROR [http-8081-4] com.shop.user.UserController - Request failed
+java.lang.NullPointerException: Cannot invoke "com.shop.model.User.getEmail()" because "user" is null
+	at com.shop.user.UserService.getUserEmail(UserService.java:42)
+	at com.shop.user.UserController.showProfile(UserController.java:19)
+2026-11-12 09:31:18 INFO  [http-8081-5] com.shop.cart.CartController - POST /cart/items
+2026-11-12 09:31:18 ERROR [http-8081-5] com.shop.cart.CartController - Could not add item
+java.lang.NumberFormatException: For input string: " 3"
+	at java.base/java.lang.NumberFormatException.forInputString(NumberFormatException.java:67)
+	at java.base/java.lang.Integer.parseInt(Integer.java:662)
+	at com.shop.cart.CartService.parseQuantity(CartService.java:58)
+	at com.shop.cart.CartController.addItem(CartController.java:33)
+2026-11-12 09:40:00 INFO  [main] com.shop.ShopApplication - Health check OK

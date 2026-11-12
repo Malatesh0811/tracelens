@@ -34,16 +34,22 @@ public class LogParser {
     private static final String CAUSED_BY = "Caused by: ";
     private static final Pattern THREAD_PREFIX = Pattern.compile("^Exception in thread \"[^\"]*\" ");
 
+    // "2026-11-12 10:02:11", "2026-11-12T10:02:11" or just "10:02:11"
+    private static final Pattern TIMESTAMP = Pattern.compile("(\\d{4}-\\d{2}-\\d{2}[ T])?\\d{2}:\\d{2}:\\d{2}");
+
     // Parsing state for the error currently being read
     private List<Cause> causes;
     private String type;
     private String message;
     private List<Frame> frames;
+    private String lastTimestamp;   // latest time seen on a normal log line
+    private String errorTimestamp;  // time of the error being read
 
     /** Finds all errors in the given log lines. Errors without any "at" frame are ignored. */
     public List<ErrorReport> parse(List<String> lines) {
         List<ErrorReport> reports = new ArrayList<>();
         causes = null;
+        lastTimestamp = null;
 
         for (String line : lines) {
             String trimmed = line.trim();
@@ -66,7 +72,13 @@ public class LogParser {
                 Matcher header = HEADER.matcher(THREAD_PREFIX.matcher(trimmed).replaceFirst(""));
                 if (header.matches()) {
                     causes = new ArrayList<>();
+                    errorTimestamp = lastTimestamp;
                     startCause(header);
+                } else {
+                    Matcher time = TIMESTAMP.matcher(line);
+                    if (time.find()) {
+                        lastTimestamp = time.group();
+                    }
                 }
             }
         }
@@ -96,7 +108,7 @@ public class LogParser {
             }
         }
         if (hasFrames) {
-            reports.add(new ErrorReport(causes));
+            reports.add(new ErrorReport(causes, errorTimestamp));
         }
         causes = null;
     }

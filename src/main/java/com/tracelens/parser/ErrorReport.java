@@ -6,15 +6,22 @@ import java.util.List;
 /**
  * One complete error found in a log: the top exception plus every "Caused by".
  *
- * @param causes in the order they appear in the log: top error first, root cause last
+ * @param causes    in the order they appear in the log: top error first, root cause last
+ * @param timestamp time of the log line just before the error (e.g. "2026-11-12 10:02:11"),
+ *                  or null when the log has no timestamps
  */
-public record ErrorReport(List<Cause> causes) {
+public record ErrorReport(List<Cause> causes, String timestamp) {
 
     public ErrorReport {
         if (causes == null || causes.isEmpty()) {
             throw new IllegalArgumentException("An error report needs at least one cause");
         }
         causes = List.copyOf(causes);
+    }
+
+    /** For errors without a timestamp. */
+    public ErrorReport(List<Cause> causes) {
+        this(causes, null);
     }
 
     /** The first exception printed, usually a generic wrapper. */
