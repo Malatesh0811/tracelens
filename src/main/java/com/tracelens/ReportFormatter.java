@@ -1,6 +1,9 @@
 package com.tracelens;
 
 import com.tracelens.analysis.ErrorGroup;
+import com.tracelens.memory.SimilarityMatcher;
+import com.tracelens.memory.Solution;
+import com.tracelens.memory.Suggestion;
 import com.tracelens.parser.ErrorReport;
 import com.tracelens.parser.Frame;
 import com.tracelens.rules.Rule;
@@ -23,10 +26,20 @@ public class ReportFormatter {
     private static final String INDENT = "              ";
 
     private final Rulebook rulebook;
+    private final List<Solution> pastFixes;
+    private final SimilarityMatcher matcher = new SimilarityMatcher();
 
-    /** The rulebook is passed in (not created here), so tests can use their own rules. */
-    public ReportFormatter(Rulebook rulebook) {
+    /**
+     * The rulebook and saved fixes are passed in (not loaded here), so tests can use their own.
+     */
+    public ReportFormatter(Rulebook rulebook, List<Solution> pastFixes) {
         this.rulebook = rulebook;
+        this.pastFixes = List.copyOf(pastFixes);
+    }
+
+    /** For when there are no saved fixes. */
+    public ReportFormatter(Rulebook rulebook) {
+        this(rulebook, List.of());
     }
 
     public String format(String source, int lineCount, List<ErrorGroup> groups, String basePackage) {
@@ -52,6 +65,7 @@ public class ReportFormatter {
             out.append(NL);
             appendGroup(out, "E" + (i + 1), groups.get(i), basePackage);
         }
+        out.append(NL).append("Fixed an error? Save the fix:  tracelens solve E1 \"what you did\"").append(NL);
         return out.toString();
     }
 
@@ -72,6 +86,26 @@ public class ReportFormatter {
 
         if (report.causes().size() > 1) {
             out.append("  CHAIN       ").append(String.join(" -> ", report.causeChain())).append(NL);
+        }
+
+        // Your own past fixes come first: they are the most trusted advice
+        List<Suggestion> suggestions = matcher.suggest(group.fingerprint(), report.rootCause().type(),
+                report.rootCause().display(), pastFixes);
+        if (!suggestions.isEmpty()) {
+            out.append("  SOLVED BEFORE").append(NL);
+            for (Suggestion suggestion : suggestions) {
+                Solution fix = suggestion.solution();
+                out.append("    ").append(fix.id()).append("  ")
+                   .append(suggestion.percent() == 100 ? "same error" : suggestion.percent() + "% similar")
+                   .append(" - worked ").append(fix.worked()).append(fix.worked() == 1 ? " time" : " times");
+                if (fix.failed() > 0) {
+                    out.append(", failed ").append(fix.failed());
+                }
+                out.append(" - saved ").append(fix.savedOn()).append(NL);
+                out.append("        ").append(fix.fix()).append(NL);
+            }
+            out.append("    Did it work?  tracelens feedback ").append(suggestions.get(0).solution().id())
+               .append(" yes   (or no)").append(NL);
         }
 
         Optional<Rule> rule = rulebook.find(report.rootCause());

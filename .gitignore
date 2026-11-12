@@ -13,6 +13,9 @@ target/
 .DS_Store
 Thumbs.db
 
+# TraceLens: the last analysis is personal; solutions.txt can be committed to share fixes
+.tracelens/last-analysis.txt
+
 # Logs (sample logs live in samples/ and are committed)
 *.log
 !samples/*.log

@@ -2,6 +2,7 @@ package com.tracelens;
 
 import com.tracelens.analysis.ErrorGroup;
 import com.tracelens.analysis.ErrorGrouper;
+import com.tracelens.memory.Solution;
 import com.tracelens.parser.Cause;
 import com.tracelens.parser.ErrorReport;
 import com.tracelens.parser.Frame;
@@ -102,6 +103,29 @@ class ReportFormatterTest {
         assertTrue(text.indexOf("Tree.java:5") == text.lastIndexOf("Tree.java:5"));
         assertTrue(text.contains("Tree.java:2"));
         assertFalse(text.contains("App.java:1"), "only " + ReportFormatter.MAX_YOUR_CODE_LINES + " lines are shown");
+    }
+
+    @Test
+    void pastFixIsShownBeforeTheRulebookAdvice() {
+        List<ErrorGroup> found = groups(dbError(null));
+        Solution saved = new Solution("S1", found.get(0).fingerprint(),
+                "java.sql.SQLException: Communications link failure", "started MySQL", 2, 1, "2026-11-12");
+
+        String text = new ReportFormatter(Rulebook.defaultRules(), List.of(saved)).format("app.log", 10, found, null);
+
+        assertTrue(text.contains("SOLVED BEFORE"));
+        assertTrue(text.contains("S1  same error - worked 2 times, failed 1 - saved 2026-11-12"));
+        assertTrue(text.contains("started MySQL"));
+        assertTrue(text.contains("tracelens feedback S1 yes"));
+        assertTrue(text.indexOf("SOLVED BEFORE") < text.indexOf("WHY"));
+    }
+
+    @Test
+    void reminderToSaveAFixIsShownWhenThereAreErrors() {
+        String text = formatter.format("app.log", 10, groups(dbError(null)), null);
+
+        assertFalse(text.contains("SOLVED BEFORE"));
+        assertTrue(text.contains("tracelens solve E1"));
     }
 
     @Test
