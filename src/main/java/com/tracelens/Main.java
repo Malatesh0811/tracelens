@@ -1,6 +1,12 @@
 package com.tracelens;
 
+import com.tracelens.ai.AiExplainer;
+import com.tracelens.ai.ClaudeClient;
+import com.tracelens.ai.LlmClient;
+import com.tracelens.ai.LlmException;
 import com.tracelens.analysis.ErrorGroup;
+import com.tracelens.memory.SimilarityMatcher;
+import com.tracelens.memory.Suggestion;
 import com.tracelens.analysis.ErrorGrouper;
 import com.tracelens.memory.LastAnalysis;
 import com.tracelens.memory.Solution;
@@ -31,23 +37,40 @@ import java.util.Optional;
  */
 public class Main {
 
-    public static final String VERSION = "0.3.0";
+    public static final String VERSION = "0.4.0";
 
     static final String SOLUTIONS_FILE = "solutions.txt";
     static final String LAST_ANALYSIS_FILE = "last-analysis.txt";
+    static final String API_KEY_VARIABLE = "ANTHROPIC_API_KEY";
+    /** The AI explains at most this many errors per run, to keep it fast and cheap. */
+    static final int MAX_AI_ERRORS = 3;
+
+    /**
+     * Everything a command needs from the outside world. main() passes the real ones;
+     * tests pass fake streams, a temporary folder and a fake AI.
+     *
+     * @param llm the AI client, or null when no API key is set
+     */
+    record Context(InputStream in, PrintStream out, PrintStream err, Path dataDir, LlmClient llm) {
+    }
 
     public static void main(String[] args) {
-        int exitCode = run(args, System.in, System.out, System.err, Path.of(".tracelens"));
-        System.exit(exitCode);
+        String apiKey = System.getenv(API_KEY_VARIABLE);
+        LlmClient llm = apiKey == null || apiKey.isBlank() ? null : new ClaudeClient(apiKey.trim());
+        Context context = new Context(System.in, System.out, System.err, Path.of(".tracelens"), llm);
+        System.exit(run(args, context));
     }
 
     /**
-     * Does all the work of main() but takes input, output and the data folder as parameters,
-     * so tests can call it with fake streams and a temporary folder.
+     * Does all the work of main() with everything from the outside world passed in.
      *
      * @return exit code: 0 = success, 1 = user error (bad command, missing file...)
      */
-    static int run(String[] args, InputStream in, PrintStream out, PrintStream err, Path dataDir) {
+    static int run(String[] args, Context context) {
+        InputStream in = context.in();
+        PrintStream out = context.out();
+        PrintStream err = context.err();
+        Path dataDir = context.dataDir();
         if (args.length == 0 || args[0].equals("help") || args[0].equals("--help")) {
             out.println(usage());
             return 0;
@@ -55,7 +78,7 @@ public class Main {
         try {
             switch (args[0]) {
                 case "analyze":
-                    return analyze(args, in, out, err, dataDir);
+                    return analyze(args, in, out, err, dataDir, context.llm());
                 case "solve":
                     return solve(args, out, err, dataDir);
                 case "feedback":
@@ -75,12 +98,15 @@ public class Main {
 
     // ---------------------------------------------------------------- analyze
 
-    private static int analyze(String[] args, InputStream in, PrintStream out, PrintStream err, Path dataDir)
-            throws IOException {
+    private static int analyze(String[] args, InputStream in, PrintStream out, PrintStream err, Path dataDir,
+                               LlmClient llm) throws IOException {
         String file = null;
         String basePackage = null;
+        boolean useAi = false;
         for (int i = 1; i < args.length; i++) {
-            if (args[i].equals("--package")) {
+            if (args[i].equals("--ai")) {
+                useAi = true;
+            } else if (args[i].equals("--package")) {
                 if (i + 1 >= args.length) {
                     err.println("--package needs a value, e.g. --package com.shop");
                     return 1;
@@ -121,7 +147,49 @@ public class Main {
         if (!groups.isEmpty()) {
             LastAnalysis.save(dataDir.resolve(LAST_ANALYSIS_FILE), groups); // so "solve E1" knows what E1 is
         }
+        if (useAi && !groups.isEmpty()) {
+            explainWithAi(groups, store.all(), basePackage, llm, out);
+        }
         return 0;
+    }
+
+    /**
+     * Optional AI step. Any problem here is reported but never fails the command:
+     * the analysis above is already complete and useful on its own.
+     */
+    private static void explainWithAi(List<ErrorGroup> groups, List<Solution> pastFixes, String basePackage,
+                                      LlmClient llm, PrintStream out) {
+        out.println();
+        if (llm == null) {
+            out.println("AI explanation skipped: set the " + API_KEY_VARIABLE + " environment variable to use --ai.");
+            out.println("Everything above works without it.");
+            return;
+        }
+        AiExplainer explainer = new AiExplainer(llm);
+        SimilarityMatcher matcher = new SimilarityMatcher();
+        for (int i = 0; i < groups.size() && i < MAX_AI_ERRORS; i++) {
+            ErrorGroup group = groups.get(i);
+            String id = "E" + (i + 1);
+            List<Suggestion> fixes = matcher.suggest(group.fingerprint(), group.example().rootCause().type(),
+                    group.example().rootCause().display(), pastFixes);
+            try {
+                AiExplainer.Result result = explainer.explain(group, fixes, basePackage);
+                out.print("AI EXPLANATION for " + id);
+                if (result.secretsMasked() > 0) {
+                    out.print("  (" + result.secretsMasked() + " secret"
+                            + (result.secretsMasked() == 1 ? "" : "s") + " masked before sending)");
+                }
+                out.println();
+                result.answer().lines().forEach(line -> out.println("  " + line));
+                out.println();
+            } catch (LlmException e) {
+                out.println("AI explanation for " + id + " failed: " + e.getMessage());
+                return; // the same problem (key, network, limit) would hit the next error too
+            }
+        }
+        if (groups.size() > MAX_AI_ERRORS) {
+            out.println("(AI explained the first " + MAX_AI_ERRORS + " errors only.)");
+        }
     }
 
     // ---------------------------------------------------------------- solve
@@ -237,6 +305,7 @@ public class Main {
                 + "Usage:" + nl
                 + "  tracelens analyze <logfile> [--package <your.package>]   find the root cause of each error" + nl
                 + "  tracelens analyze -                                      read piped input, e.g. mvn test | ..." + nl
+                + "  tracelens analyze <logfile> --ai                         also ask AI (needs " + API_KEY_VARIABLE + ")" + nl
                 + "  tracelens solve <error id> \"<what you did>\"              save your fix, e.g. solve E1 \"...\"" + nl
                 + "  tracelens feedback <fix id> yes|no                       did a suggested fix work?" + nl
                 + "  tracelens history                                        list all saved fixes";

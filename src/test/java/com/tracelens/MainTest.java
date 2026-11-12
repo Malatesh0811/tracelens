@@ -1,5 +1,7 @@
 package com.tracelens;
 
+import com.tracelens.ai.LlmClient;
+import com.tracelens.ai.LlmException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -40,14 +42,15 @@ class MainTest {
 
     private ByteArrayOutputStream out = new ByteArrayOutputStream();
     private ByteArrayOutputStream err = new ByteArrayOutputStream();
+    private LlmClient llm = null; // null = no API key set
 
     private int run(InputStream in, String... args) {
         out = new ByteArrayOutputStream();
         err = new ByteArrayOutputStream();
-        return Main.run(args, in,
+        return Main.run(args, new Main.Context(in,
                 new PrintStream(out, true, StandardCharsets.UTF_8),
                 new PrintStream(err, true, StandardCharsets.UTF_8),
-                dir.resolve(".tracelens"));
+                dir.resolve(".tracelens"), llm));
     }
 
     private int run(String... args) {
@@ -255,6 +258,81 @@ class MainTest {
         String text = output();
         assertTrue(text.contains("2 saved fixes"));
         assertTrue(text.indexOf("S2  java.sql.SQLException") < text.indexOf("S1  java.lang.NullPointerException"));
+    }
+
+    // ------------------------------------------------------------ --ai
+
+    @Test
+    void aiWithoutApiKeyIsSkippedButAnalysisStillWorks() throws IOException {
+        assertEquals(0, run("analyze", log("app.log", NPE_LOG), "--ai"));
+
+        assertTrue(output().contains("ROOT CAUSE  java.lang.NullPointerException"));
+        assertTrue(output().contains("AI explanation skipped: set the ANTHROPIC_API_KEY"));
+    }
+
+    @Test
+    void aiAnswerIsShownWithMaskedSecretCount() throws IOException {
+        StringBuilder asked = new StringBuilder();
+        llm = (instructions, question) -> {
+            asked.append(question);
+            return "The database is down.\n1. Start MySQL.";
+        };
+        String secretLog = DB_LOG_REFUSED.replace("Connection refused", "Connection refused for password=hunter2");
+
+        assertEquals(0, run("analyze", log("app.log", secretLog), "--ai"));
+
+        assertTrue(output().contains("AI EXPLANATION for E1  (1 secret masked before sending)"));
+        assertTrue(output().contains("  The database is down."));
+        assertTrue(output().contains("  1. Start MySQL."));
+        assertFalse(asked.toString().contains("hunter2"));
+    }
+
+    @Test
+    void aiFailureIsReportedButCommandStillSucceeds() throws IOException {
+        llm = (instructions, question) -> {
+            throw new LlmException("The API key was rejected.");
+        };
+
+        assertEquals(0, run("analyze", log("app.log", NPE_LOG), "--ai"));
+        assertTrue(output().contains("ROOT CAUSE"));
+        assertTrue(output().contains("AI explanation for E1 failed: The API key was rejected."));
+    }
+
+    @Test
+    void aiIsNotCalledWithoutTheFlag() throws IOException {
+        llm = (instructions, question) -> {
+            throw new AssertionError("AI must not be called without --ai");
+        };
+
+        assertEquals(0, run("analyze", log("app.log", NPE_LOG)));
+        assertFalse(output().contains("AI"));
+    }
+
+    @Test
+    void aiExplainsAtMostThreeErrors() throws IOException {
+        int[] calls = {0};
+        llm = (instructions, question) -> {
+            calls[0]++;
+            return "ok";
+        };
+        String fourErrors = """
+                java.lang.NullPointerException
+                \tat com.shop.A.a(A.java:1)
+                x
+                java.lang.ArithmeticException: / by zero
+                \tat com.shop.B.b(B.java:2)
+                x
+                java.lang.ClassCastException
+                \tat com.shop.C.c(C.java:3)
+                x
+                java.lang.NumberFormatException
+                \tat com.shop.D.d(D.java:4)
+                """;
+
+        run("analyze", log("app.log", fourErrors), "--ai");
+
+        assertEquals(Main.MAX_AI_ERRORS, calls[0]);
+        assertTrue(output().contains("first 3 errors only"));
     }
 
     @Test
