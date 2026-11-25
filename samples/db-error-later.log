@@ -1,0 +1,6 @@
+2026-11-27 09:00:00 INFO  [http-8081-1] com.shop.repo.ProductRepo - GET /products
+2026-11-27 09:00:00 ERROR [http-8081-1] com.shop.repo.ProductRepo - Request failed
+java.sql.SQLException: Communications link failure - Connection timed out
+	at com.mysql.cj.jdbc.ConnectionImpl.createNewIO(ConnectionImpl.java:836)
+	at com.shop.repo.ProductRepo.findAll(ProductRepo.java:22)
+	at com.shop.web.ProductController.list(ProductController.java:17)
